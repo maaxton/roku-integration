@@ -1,0 +1,11 @@
+{
+  "name": "roku-integration",
+  "version": "1.0.124",
+  "displayName": "Roku Integration",
+  "description": "Discover and control Roku devices on your network",
+  "type": "community",
+  "author": "Waiveo",
+  "requires": ["device-discovery"],
+  "provides": ["roku-control"],
+  "permissions": ["network", "database"]
+}

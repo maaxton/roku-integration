@@ -1,0 +1,10 @@
+{
+  "name": "roku-integration",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Roku device discovery and control",
+  "main": "server/index.js",
+  "dependencies": {
+    "xml2js": "^0.6.2"
+  }
+}

@@ -1,0 +1,65 @@
+{
+  "handler": {
+    "id": "roku-device",
+    "deviceType": "roku",
+    "priority": 80,
+    
+    "match": {
+      "ports": [8060],
+      "probe": {
+        "port": 8060,
+        "path": "/query/device-info",
+        "xml": true,
+        "require": ["serial-number"]
+      }
+    },
+    
+    "device": {
+      "id": "roku:{{probe.serial_number}}",
+      "name": "{{probe.friendly_device_name | default: probe.model_name}}",
+      "manufacturer": "{{probe.vendor_name | default: 'Roku'}}",
+      "model": "{{probe.model_name}}",
+      "firmware": "{{probe.software_version}}",
+      "serial_number": "{{probe.serial_number}}",
+      "device_type": "roku",
+      "discovery_method": "network-scan"
+    },
+    
+    "entities": [
+      {
+        "id": "power",
+        "type": "switch",
+        "domain": "media_player",
+        "name": "{{device.name}}",
+        "pollInterval": 5000,
+        "pollHandler": "pollPower",
+        "commandHandler": "commandPower"
+      },
+      {
+        "id": "media",
+        "type": "media_player",
+        "domain": "media_player",
+        "name": "{{device.name}} Media",
+        "pollInterval": 10000,
+        "pollHandler": "pollMedia",
+        "commandHandler": "commandMedia"
+      },
+      {
+        "id": "active_app",
+        "type": "sensor",
+        "domain": "sensor",
+        "name": "{{device.name}} App",
+        "pollInterval": 10000,
+        "pollHandler": "pollActiveApp"
+      },
+      {
+        "id": "remote",
+        "type": "remote",
+        "domain": "remote",
+        "name": "{{device.name}} Remote",
+        "capabilities": ["keypress", "launch_app"],
+        "commandHandler": "commandRemote"
+      }
+    ]
+  }
+}
