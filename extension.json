@@ -1,10 +1,12 @@
 {
   "name": "roku-integration",
-  "version": "1.0.124",
+  "version": "1.0.126",
   "displayName": "Roku Integration",
   "description": "Discover and control Roku devices on your network",
+  "main": "server/index.js",
   "type": "community",
   "author": "Waiveo",
+  "repository": "https://github.com/waiveo/roku-integration",
   "requires": ["device-discovery"],
   "provides": ["roku-control"],
   "permissions": ["network", "database"]

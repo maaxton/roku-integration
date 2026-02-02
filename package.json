@@ -2,8 +2,18 @@
   "name": "roku-integration",
   "version": "1.0.0",
   "type": "module",
-  "description": "Roku device discovery and control",
+  "description": "Roku device discovery and control for Waiveo",
   "main": "server/index.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/waiveo/roku-integration.git"
+  },
+  "homepage": "https://github.com/waiveo/roku-integration",
+  "bugs": {
+    "url": "https://github.com/waiveo/roku-integration/issues"
+  },
+  "author": "Waiveo",
+  "license": "MIT",
   "dependencies": {
     "xml2js": "^0.6.2"
   }
