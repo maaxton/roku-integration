@@ -6,11 +6,11 @@
   "main": "server/index.js",
   "repository": {
     "type": "git",
-    "url": "https://github.com/waiveo/roku-integration.git"
+    "url": "https://github.com/maaxton/roku-integration.git"
   },
-  "homepage": "https://github.com/waiveo/roku-integration",
+  "homepage": "https://github.com/maaxton/roku-integration",
   "bugs": {
-    "url": "https://github.com/waiveo/roku-integration/issues"
+    "url": "https://github.com/maaxton/roku-integration/issues"
   },
   "author": "Waiveo",
   "license": "MIT",
