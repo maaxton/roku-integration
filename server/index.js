@@ -555,9 +555,9 @@ function registerPollAdapter() {
     
     /**
      * Called when device-discovery detects a state change
-     * Fire roku-specific triggers directly for automation matching
+     * Fire simple roku-specific triggers for automation
      * 
-     * NOTE: previousState and currentState are ARRAYS of entities (as returned by pollDevice)
+     * States: 'on' (home), 'playing' (app active), 'idle' (screensaver), 'off' (standby)
      */
     onStateChange: (device, previousStates, currentStates) => {
       const deviceId = device.id;
@@ -570,7 +570,6 @@ function registerPollAdapter() {
       // Extract states
       const oldState = prevEntity?.state;
       const newState = currEntity?.state;
-      const oldAttrs = prevEntity?.attributes || {};
       const newAttrs = currEntity?.attributes || {};
       
       // Only fire if state actually changed
@@ -578,61 +577,45 @@ function registerPollAdapter() {
         return;
       }
       
-      api.log(`Roku ${deviceName} state changed: ${oldState} → ${newState}`, 'info');
+      api.log(`Roku ${deviceName}: ${oldState} → ${newState}`, 'info');
       
-      // Build trigger payload with BOTH naming conventions
-      // (old_state/new_state for fieldMapping, to/from for direct matching)
-      const triggerPayload = {
+      // Base payload for all triggers
+      const basePayload = {
         device_id: deviceId,
         device_name: deviceName,
         entity_id: currEntity?.entityId || `media_player.${deviceName.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`,
-        old_state: oldState,
-        new_state: newState,
-        old_attributes: oldAttrs,
-        new_attributes: newAttrs,
-        to: newState,
-        from: oldState,
         device_type: 'roku'
       };
       
-      // Fire power_changed trigger (IPC handles routing to main thread)
-      api.fireTrigger('power_changed', triggerPayload);
+      // POWERED ON: off/idle → on/playing
+      if ((oldState === 'off' || oldState === 'idle') && (newState === 'on' || newState === 'playing')) {
+        api.fireTrigger('powered_on', basePayload);
+      }
       
-      // Fire activity_changed (same payload with extra fields)
-      api.fireTrigger('activity_changed', {
-        ...triggerPayload,
-        activeApp: newAttrs.active_app || null,
-        isScreensaver: newAttrs.is_screensaver || false
-      });
+      // POWERED OFF: on/playing → off/idle
+      if ((oldState === 'on' || oldState === 'playing') && (newState === 'off' || newState === 'idle')) {
+        api.fireTrigger('powered_off', basePayload);
+      }
       
-      // Fire screensaver triggers
-      if (newAttrs.is_screensaver && !oldAttrs.is_screensaver) {
-        api.fireTrigger('screensaver_started', {
-          device_id: deviceId,
-          device_name: deviceName,
-          entity_id: triggerPayload.entity_id,
-          screensaver_name: newAttrs.screensaver_name,
-          device_type: 'roku'
-        });
-      } else if (!newAttrs.is_screensaver && oldAttrs.is_screensaver) {
-        api.fireTrigger('screensaver_stopped', {
-          device_id: deviceId,
-          device_name: deviceName,
-          entity_id: triggerPayload.entity_id,
+      // STARTED PLAYING: any → playing
+      if (newState === 'playing' && oldState !== 'playing') {
+        api.fireTrigger('started_playing', {
+          ...basePayload,
           active_app: newAttrs.active_app,
-          device_type: 'roku'
+          active_app_id: newAttrs.active_app_id
         });
       }
       
-      // Fire app_launched when state changes to 'playing'
-      if (newState === 'playing' && oldState !== 'playing') {
-        api.fireTrigger('app_launched', {
-          device_id: deviceId,
-          device_name: deviceName,
-          entity_id: triggerPayload.entity_id,
-          active_app: newAttrs.active_app,
-          active_app_id: newAttrs.active_app_id,
-          device_type: 'roku'
+      // STOPPED PLAYING: playing → any other state
+      if (oldState === 'playing' && newState !== 'playing') {
+        api.fireTrigger('stopped_playing', basePayload);
+      }
+      
+      // SCREENSAVER STARTED: any → idle (with screensaver flag)
+      if (newState === 'idle' && newAttrs.is_screensaver) {
+        api.fireTrigger('screensaver_started', {
+          ...basePayload,
+          screensaver_name: newAttrs.screensaver_name
         });
       }
     }
@@ -645,7 +628,7 @@ function registerPollAdapter() {
 /**
  * Register trigger aliases with device-discovery for device online/offline events
  * 
- * NOTE: State-change triggers (power_changed, app_launched, screensaver_*) are
+ * NOTE: State-change triggers (powered_on, powered_off, etc.) are
  * fired DIRECTLY by onStateChange callback - no aliases needed for those.
  * 
  * Only device_online/device_offline need aliases because they come from
@@ -673,7 +656,7 @@ function registerTriggerAliases() {
     extensionName: 'roku-integration'
   });
   
-  api.log('Registered 6 trigger aliases with device-discovery', 'debug');
+  api.log('Registered device online/offline trigger aliases', 'debug');
 }
 
 /**

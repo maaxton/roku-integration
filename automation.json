@@ -2,133 +2,116 @@
   "devicesEndpoint": "/api/extensions/roku-integration/devices",
   "triggers": [
     {
-      "key": "power_changed",
-      "label": "Roku power changed",
-      "description": "When a Roku device's power state changes (on/off/playing/idle). Use 'from' filter to specify previous state.",
-      "fields": [
-        {"key": "device_id", "type": "device", "label": "Roku Device"},
-        {"key": "to", "label": "To State", "type": "select", "options": [
-          {"value": "any", "label": "Any state"},
-          {"value": "on", "label": "On (Home screen)"},
-          {"value": "playing", "label": "Playing content"},
-          {"value": "idle", "label": "Idle/Screensaver"},
-          {"value": "off", "label": "Off/Standby"}
-        ]},
-        {"key": "from", "label": "From State", "type": "select", "required": false, "options": [
-          {"value": "any", "label": "Any state"},
-          {"value": "on", "label": "Was on"},
-          {"value": "playing", "label": "Was playing"},
-          {"value": "idle", "label": "Was idle"},
-          {"value": "off", "label": "Was off"}
-        ]}
-      ],
-      "output": ["entity_id", "device_id", "device_name", "old_state", "new_state", "to", "from", "old_attributes", "new_attributes"]
-    },
-    {
-      "key": "activity_changed",
-      "label": "Roku activity changed",
-      "description": "When a Roku device's activity state changes. Fires for screensaver transitions, app changes, etc.",
-      "fields": [
-        {"key": "device_id", "type": "device", "label": "Roku Device"},
-        {"key": "to", "label": "To State", "type": "select", "options": [
-          {"value": "any", "label": "Any state"},
-          {"value": "on", "label": "Active (Home screen)"},
-          {"value": "playing", "label": "Playing content"},
-          {"value": "idle", "label": "Idle/Screensaver"},
-          {"value": "off", "label": "Off/Standby"}
-        ]},
-        {"key": "from", "label": "From State", "type": "select", "required": false, "options": [
-          {"value": "any", "label": "Any state"},
-          {"value": "on", "label": "Was active"},
-          {"value": "playing", "label": "Was playing"},
-          {"value": "idle", "label": "Was idle"},
-          {"value": "off", "label": "Was off"}
-        ]}
-      ],
-      "output": ["entity_id", "device_id", "device_name", "old_state", "new_state", "to", "from", "old_attributes", "new_attributes", "activeApp", "isScreensaver"]
-    },
-    {
-      "key": "app_launched",
-      "label": "App launched",
-      "description": "When an app starts playing on a Roku device (state changes to 'playing')",
+      "key": "powered_on",
+      "label": "Roku powered on",
+      "description": "When a Roku device turns on (from standby or off)",
       "fields": [
         {"key": "device_id", "type": "device", "label": "Roku Device"}
       ],
-      "output": ["entity_id", "device_id", "device_name", "active_app", "active_app_id"]
+      "output": ["device_id", "device_name", "entity_id"]
+    },
+    {
+      "key": "powered_off",
+      "label": "Roku powered off",
+      "description": "When a Roku device turns off or goes to standby",
+      "fields": [
+        {"key": "device_id", "type": "device", "label": "Roku Device"}
+      ],
+      "output": ["device_id", "device_name", "entity_id"]
+    },
+    {
+      "key": "started_playing",
+      "label": "Roku started playing",
+      "description": "When a Roku device starts playing content (app launched)",
+      "fields": [
+        {"key": "device_id", "type": "device", "label": "Roku Device"}
+      ],
+      "output": ["device_id", "device_name", "entity_id", "active_app", "active_app_id"]
+    },
+    {
+      "key": "stopped_playing",
+      "label": "Roku stopped playing",
+      "description": "When a Roku device stops playing (returned to home or idle)",
+      "fields": [
+        {"key": "device_id", "type": "device", "label": "Roku Device"}
+      ],
+      "output": ["device_id", "device_name", "entity_id"]
     },
     {
       "key": "screensaver_started",
-      "label": "Screensaver started",
-      "description": "When the Roku screensaver activates (idle timeout)",
+      "label": "Roku screensaver started",
+      "description": "When the Roku screensaver activates",
       "fields": [
         {"key": "device_id", "type": "device", "label": "Roku Device"}
       ],
-      "output": ["entity_id", "device_id", "device_name", "screensaver_name"]
-    },
-    {
-      "key": "screensaver_stopped",
-      "label": "Screensaver stopped",
-      "description": "When the Roku screensaver deactivates (user interaction)",
-      "fields": [
-        {"key": "device_id", "type": "device", "label": "Roku Device"}
-      ],
-      "output": ["entity_id", "device_id", "device_name", "active_app"]
+      "output": ["device_id", "device_name", "entity_id", "screensaver_name"]
     },
     {
       "key": "device_online",
       "label": "Roku came online",
       "description": "When a Roku device reconnects after being offline",
-      "mapsTo": "device_online",
-      "fieldMapping": {
-        "device_id": "device_id"
-      },
-      "fields": [{"key": "device_id", "type": "device", "label": "Roku Device"}],
+      "fields": [
+        {"key": "device_id", "type": "device", "label": "Roku Device"}
+      ],
       "output": ["device_id", "device_name", "ip_address"]
     },
     {
       "key": "device_offline",
       "label": "Roku went offline",
       "description": "When a Roku device becomes unreachable",
-      "mapsTo": "device_offline",
-      "fieldMapping": {
-        "device_id": "device_id"
-      },
-      "fields": [{"key": "device_id", "type": "device", "label": "Roku Device"}],
-      "output": ["device_id", "device_name", "reason", "failures"]
+      "fields": [
+        {"key": "device_id", "type": "device", "label": "Roku Device"}
+      ],
+      "output": ["device_id", "device_name", "reason"]
     }
   ],
   "actions": [
     {
       "key": "power_on",
       "label": "Power on Roku",
-      "endpoint": "POST /api/extensions/roku-integration/devices/{{device_id}}/power/on",
-      "fields": [{"key": "device_id", "type": "device", "label": "Roku Device", "required": true}]
+      "description": "Wake up a Roku device from standby",
+      "fields": [
+        {"key": "device_id", "type": "device", "label": "Roku Device", "required": true}
+      ]
     },
     {
       "key": "power_off",
       "label": "Power off Roku",
-      "endpoint": "POST /api/extensions/roku-integration/devices/{{device_id}}/power/off",
-      "fields": [{"key": "device_id", "type": "device", "label": "Roku Device", "required": true}]
+      "description": "Put a Roku device into standby",
+      "fields": [
+        {"key": "device_id", "type": "device", "label": "Roku Device", "required": true}
+      ]
     },
     {
       "key": "launch_app",
-      "label": "Launch app",
+      "label": "Launch app on Roku",
       "description": "Launch an app on a Roku device",
-      "endpoint": "POST /api/extensions/roku-integration/devices/{{device_id}}/launch/{{app_id}}",
       "fields": [
         {"key": "device_id", "type": "device", "label": "Roku Device", "required": true},
-        {"key": "app_id", "type": "select", "label": "App", "required": true, "source": "/api/extensions/roku-integration/devices/{{device_id}}/apps"}
+        {"key": "app_id", "type": "text", "label": "App ID", "required": true, "placeholder": "Netflix=12, YouTube=837, etc."}
       ]
     },
     {
       "key": "send_keypress",
-      "label": "Send remote keypress",
-      "endpoint": "POST /api/extensions/roku-integration/devices/{{device_id}}/keypress/{{key}}",
+      "label": "Send Roku remote key",
+      "description": "Send a remote control key press",
       "fields": [
         {"key": "device_id", "type": "device", "label": "Roku Device", "required": true},
         {"key": "key", "type": "select", "label": "Key", "required": true, "options": [
-          "Home", "Back", "Select", "Up", "Down", "Left", "Right",
-          "Play", "Pause", "Rev", "Fwd", "VolumeUp", "VolumeDown", "VolumeMute", "PowerOff"
+          {"value": "Home", "label": "Home"},
+          {"value": "Back", "label": "Back"},
+          {"value": "Select", "label": "OK/Select"},
+          {"value": "Up", "label": "Up"},
+          {"value": "Down", "label": "Down"},
+          {"value": "Left", "label": "Left"},
+          {"value": "Right", "label": "Right"},
+          {"value": "Play", "label": "Play"},
+          {"value": "Pause", "label": "Pause"},
+          {"value": "Rev", "label": "Rewind"},
+          {"value": "Fwd", "label": "Fast Forward"},
+          {"value": "VolumeUp", "label": "Volume Up"},
+          {"value": "VolumeDown", "label": "Volume Down"},
+          {"value": "VolumeMute", "label": "Mute"}
         ]}
       ]
     }
