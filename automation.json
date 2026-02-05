@@ -70,6 +70,7 @@
       "key": "power_on",
       "label": "Power on Roku",
       "description": "Wake up a Roku device from standby",
+      "endpoint": "POST /api/extensions/roku-integration/devices/{{device_id}}/power/on",
       "fields": [
         {"key": "device_id", "type": "device", "label": "Roku Device", "required": true}
       ]
@@ -78,6 +79,7 @@
       "key": "power_off",
       "label": "Power off Roku",
       "description": "Put a Roku device into standby",
+      "endpoint": "POST /api/extensions/roku-integration/devices/{{device_id}}/power/off",
       "fields": [
         {"key": "device_id", "type": "device", "label": "Roku Device", "required": true}
       ]
@@ -86,6 +88,7 @@
       "key": "launch_app",
       "label": "Launch app on Roku",
       "description": "Launch an app on a Roku device",
+      "endpoint": "POST /api/extensions/roku-integration/devices/{{device_id}}/launch/{{app_id}}",
       "fields": [
         {"key": "device_id", "type": "device", "label": "Roku Device", "required": true},
         {"key": "app_id", "type": "text", "label": "App ID", "required": true, "placeholder": "Netflix=12, YouTube=837, etc."}
@@ -95,6 +98,7 @@
       "key": "send_keypress",
       "label": "Send Roku remote key",
       "description": "Send a remote control key press",
+      "endpoint": "POST /api/extensions/roku-integration/devices/{{device_id}}/keypress/{{key}}",
       "fields": [
         {"key": "device_id", "type": "device", "label": "Roku Device", "required": true},
         {"key": "key", "type": "select", "label": "Key", "required": true, "options": [
