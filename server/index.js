@@ -467,11 +467,11 @@ function registerPollAdapter() {
     },
     
     /**
-     * Get poll interval - 1 second for responsive state updates
+     * Get poll interval - 750ms for responsive state updates
      */
     getPollInterval: (device) => {
       // Could check device metadata for custom interval
-      return 1000; // 1 second polling
+      return 750; // 750ms polling for faster state change detection
     },
     
     /**
