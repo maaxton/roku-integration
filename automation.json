@@ -91,7 +91,7 @@
       "endpoint": "POST /api/extensions/roku-integration/devices/{{device_id}}/launch/{{app_id}}",
       "fields": [
         {"key": "device_id", "type": "device", "label": "Roku Device", "required": true},
-        {"key": "app_id", "type": "text", "label": "App ID", "required": true, "placeholder": "Netflix=12, YouTube=837, etc."}
+        {"key": "app_id", "type": "select", "label": "App", "required": true, "source": "/api/extensions/roku-integration/devices/{{device_id}}/apps"}
       ]
     },
     {
