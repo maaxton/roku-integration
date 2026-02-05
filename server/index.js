@@ -332,7 +332,7 @@ export async function onInstall(extensionApi) {
  */
 export async function init(extensionApi) {
   api = extensionApi;
-  api.log('Roku Integration initializing...', 'warn');
+  api.log('Roku Integration initializing...', 'debug');
 
   // Ensure model is registered (in case onInstall failed previously)
   try {
@@ -621,16 +621,8 @@ function registerPollAdapter() {
     }
   };
   
-  // Log adapter functions before registration
-  api.log(`Registering Roku poll adapter:`, 'warn');
-  api.log(`  - deviceType: ${adapter.deviceType}`, 'warn');
-  api.log(`  - createClient: ${typeof adapter.createClient}`, 'warn');
-  api.log(`  - getPollInterval: ${typeof adapter.getPollInterval}`, 'warn');
-  api.log(`  - pollDevice: ${typeof adapter.pollDevice}`, 'warn');
-  api.log(`  - onStateChange: ${typeof adapter.onStateChange}`, 'warn');
-  
   api.registerDevicePollAdapter(adapter);
-  api.log('Registered Roku poll adapter with DevicePollingManager', 'warn');
+  api.log('Registered Roku poll adapter with DevicePollingManager', 'debug');
 }
 
 /**
