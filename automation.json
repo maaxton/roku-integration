@@ -1,5 +1,59 @@
 {
   "devicesEndpoint": "/api/extensions/roku-integration/devices",
+  "triggers": [
+    {
+      "key": "state",
+      "label": "Roku power state changed",
+      "description": "When a Roku device turns on, off, starts playing, or goes idle",
+      "fields": [
+        {"key": "entity_id", "type": "device", "label": "Roku Device"},
+        {"key": "to", "type": "select", "label": "New State", "options": [
+          {"value": "on", "label": "On (home screen)"},
+          {"value": "off", "label": "Off (standby)"},
+          {"value": "playing", "label": "Playing (app active)"},
+          {"value": "idle", "label": "Idle (screensaver)"}
+        ]},
+        {"key": "from", "type": "select", "label": "Previous State (optional)", "options": [
+          {"value": "on", "label": "On (home screen)"},
+          {"value": "off", "label": "Off (standby)"},
+          {"value": "playing", "label": "Playing (app active)"},
+          {"value": "idle", "label": "Idle (screensaver)"}
+        ]}
+      ],
+      "output": ["entity_id", "old_state", "new_state", "attributes"]
+    },
+    {
+      "key": "state",
+      "label": "Roku started playing",
+      "description": "When a Roku device launches an app or starts playing content",
+      "fields": [
+        {"key": "entity_id", "type": "device", "label": "Roku Device"},
+        {"key": "to", "type": "hidden", "value": "playing"}
+      ],
+      "output": ["entity_id", "old_state", "new_state", "attributes"]
+    },
+    {
+      "key": "state",
+      "label": "Roku turned on",
+      "description": "When a Roku device wakes from standby",
+      "fields": [
+        {"key": "entity_id", "type": "device", "label": "Roku Device"},
+        {"key": "from", "type": "hidden", "value": "off"},
+        {"key": "to", "type": "hidden", "value": "on"}
+      ],
+      "output": ["entity_id", "old_state", "new_state", "attributes"]
+    },
+    {
+      "key": "state",
+      "label": "Roku turned off",
+      "description": "When a Roku device goes to standby",
+      "fields": [
+        {"key": "entity_id", "type": "device", "label": "Roku Device"},
+        {"key": "to", "type": "hidden", "value": "off"}
+      ],
+      "output": ["entity_id", "old_state", "new_state", "attributes"]
+    }
+  ],
   "actions": [
     {
       "key": "power_on",
