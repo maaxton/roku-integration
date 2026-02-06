@@ -10,9 +10,6 @@ import { RokuClient, ROKU_ECP_PORT } from './RokuClient.js';
 let api = null;
 let deviceStore = null;
 
-// Client cache for reuse across polls and commands
-const clientCache = new Map(); // deviceId -> RokuClient
-
 // Model schema for roku_devices table
 const MODEL_SCHEMAS = {
   devices: {
@@ -351,11 +348,6 @@ export async function init(extensionApi) {
   // so polling can start as soon as devices are registered
   registerPollAdapter();
   api.log('Poll adapter registered', 'debug');
-  
-  // Register trigger aliases with device-discovery
-  // These map convenience triggers (power_changed, screensaver_started) to entity_state_changed
-  registerTriggerAliases();
-  api.log('Trigger aliases registered', 'debug');
 
   // Sync existing devices to centralized device_registry
   // This ensures polling works for devices added before the centralized system
@@ -451,19 +443,14 @@ function registerDiscoveryHandler() {
 function registerPollAdapter() {
   const adapter = {
     deviceType: 'roku',
+    extensionName: 'roku-integration',
     
     /**
      * Create a RokuClient for a device
      */
     createClient: (device) => {
-      const ip = device.ip_address;
-      if (!ip) return null;
-      
-      // Cache clients for reuse
-      if (!clientCache.has(device.id)) {
-        clientCache.set(device.id, new RokuClient(ip));
-      }
-      return clientCache.get(device.id);
+      if (!device.ip_address) return null;
+      return new RokuClient(device.ip_address);
     },
     
     /**
@@ -551,112 +538,11 @@ function registerPollAdapter() {
       ];
       
       return entities;
-    },
-    
-    /**
-     * Called when device-discovery detects a state change
-     * Fire simple roku-specific triggers for automation
-     * 
-     * States: 'on' (home), 'playing' (app active), 'idle' (screensaver), 'off' (standby)
-     */
-    onStateChange: (device, previousStates, currentStates) => {
-      const deviceId = device.id;
-      const deviceName = device.friendly_name || device.name || deviceId;
-      
-      // pollDevice returns an array of entities - get the main media_player entity
-      const prevEntity = Array.isArray(previousStates) ? previousStates[0] : previousStates;
-      const currEntity = Array.isArray(currentStates) ? currentStates[0] : currentStates;
-      
-      // Extract states
-      const oldState = prevEntity?.state;
-      const newState = currEntity?.state;
-      const newAttrs = currEntity?.attributes || {};
-      
-      // Only fire if state actually changed
-      if (oldState === newState) {
-        return;
-      }
-      
-      api.log(`Roku ${deviceName}: ${oldState} → ${newState}`, 'info');
-      
-      // Base payload for all triggers
-      const basePayload = {
-        device_id: deviceId,
-        device_name: deviceName,
-        entity_id: currEntity?.entityId || `media_player.${deviceName.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`,
-        device_type: 'roku'
-      };
-      
-      // POWERED ON: off/idle → on/playing
-      if ((oldState === 'off' || oldState === 'idle') && (newState === 'on' || newState === 'playing')) {
-        api.fireTrigger('powered_on', basePayload);
-      }
-      
-      // POWERED OFF: on/playing → off/idle
-      if ((oldState === 'on' || oldState === 'playing') && (newState === 'off' || newState === 'idle')) {
-        api.fireTrigger('powered_off', basePayload);
-      }
-      
-      // STARTED PLAYING: any → playing
-      if (newState === 'playing' && oldState !== 'playing') {
-        api.fireTrigger('started_playing', {
-          ...basePayload,
-          active_app: newAttrs.active_app,
-          active_app_id: newAttrs.active_app_id
-        });
-      }
-      
-      // STOPPED PLAYING: playing → any other state
-      if (oldState === 'playing' && newState !== 'playing') {
-        api.fireTrigger('stopped_playing', basePayload);
-      }
-      
-      // SCREENSAVER STARTED: any → idle (with screensaver flag)
-      if (newState === 'idle' && newAttrs.is_screensaver) {
-        api.fireTrigger('screensaver_started', {
-          ...basePayload,
-          screensaver_name: newAttrs.screensaver_name
-        });
-      }
     }
   };
   
   api.registerDevicePollAdapter(adapter);
   api.log('Registered Roku poll adapter with DevicePollingManager', 'debug');
-}
-
-/**
- * Register trigger aliases with device-discovery for device online/offline events
- * 
- * NOTE: State-change triggers (powered_on, powered_off, etc.) are
- * fired DIRECTLY by onStateChange callback - no aliases needed for those.
- * 
- * Only device_online/device_offline need aliases because they come from
- * device-discovery's polling health checks, not state changes.
- */
-function registerTriggerAliases() {
-  if (!api.globalEventBus) {
-    api.log('globalEventBus not available, skipping trigger alias registration', 'warn');
-    return;
-  }
-  
-  // Device online - Roku came back online (from device-discovery health check)
-  api.globalEventBus.emit('triggers:register-alias', {
-    key: 'device_online',
-    maps_to: 'device_online',
-    filters: { device_type: 'roku' },
-    extensionName: 'roku-integration'
-  });
-  
-  // Device offline - Roku went offline (from device-discovery health check)
-  api.globalEventBus.emit('triggers:register-alias', {
-    key: 'device_offline',
-    maps_to: 'device_offline',
-    filters: { device_type: 'roku' },
-    extensionName: 'roku-integration'
-  });
-  
-  api.log('Registered device online/offline trigger aliases', 'debug');
 }
 
 /**
@@ -747,13 +633,6 @@ function registerInspectorPanel() {
  * Get or create a client for a device IP
  */
 function getClient(ipAddress) {
-  // Find by IP in cache
-  for (const [deviceId, client] of clientCache) {
-    if (client.host === ipAddress) {
-      return client;
-    }
-  }
-  // Create new client (not cached since we don't have device ID)
   return new RokuClient(ipAddress);
 }
 
@@ -846,10 +725,6 @@ async function handleDiscoveredCandidate(candidate) {
           oldIp,
           newIp: ip
         });
-        
-        // Update client cache with new IP
-        clientCache.delete(existing.device_id);
-        clientCache.set(existing.device_id, new RokuClient(ip));
       } else {
         // Just update last seen
         await deviceStore.updateDeviceStatus(existing.device_id, {
@@ -1332,9 +1207,6 @@ function registerRoutes() {
       return { success: false, error: 'Device not found', status: 404 };
     }
 
-    // Clear from client cache
-    clientCache.delete(params.id);
-    
     await deviceStore.deleteDevice(params.id);
 
     // Unregister from global registry - this will stop polling via device:removed event
@@ -1486,9 +1358,6 @@ export async function onDisable() {
   // Unregister poll adapter - central manager will stop polling roku devices
   api.unregisterDevicePollAdapter('roku');
   
-  // Clear client cache
-  clientCache.clear();
-  
   api.log('Roku Integration disabled', 'info');
 }
 
@@ -1509,9 +1378,6 @@ export async function onEnable() {
 export async function onUninstall() {
   // Unregister poll adapter
   api.unregisterDevicePollAdapter('roku');
-  
-  // Clear client cache
-  clientCache.clear();
   
   // Unregister discovery handler
   api.globalEventBus.emit('discovery:unregister-handler', {

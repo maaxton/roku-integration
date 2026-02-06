@@ -49,19 +49,15 @@ Navigate to **Roku** in the sidebar to see all discovered devices. Click any dev
 
 ### Automation
 
-Create automations using Roku triggers:
+Create automations using entity state changes. Each Roku device creates a `media_player` entity that reports its current state.
 
-| Trigger | Description |
-|---------|-------------|
-| `power_changed` | When power state changes (on/off/playing/idle) |
-| `activity_changed` | When activity changes (includes app switches) |
-| `app_launched` | When an app starts playing |
-| `screensaver_started` | When screensaver activates |
-| `screensaver_stopped` | When screensaver deactivates |
-| `device_online` | When device comes back online |
-| `device_offline` | When device becomes unreachable |
+**Entity States:**
+- `off` - Device is in standby/powered off
+- `on` - Device is on and at the home screen
+- `playing` - Device is running an app or playing content
+- `idle` - Device is displaying the screensaver
 
-Available actions:
+**Available Actions:**
 
 | Action | Description |
 |--------|-------------|
@@ -70,21 +66,44 @@ Available actions:
 | `launch_app` | Launch a specific app |
 | `send_keypress` | Send remote control key |
 
-### Example Automation
+### Example Automations
 
-Turn off Roku when screensaver has been active for 30 minutes:
+**Turn off Roku when it goes idle:**
 
-```yaml
-trigger:
-  type: screensaver_started
-  device_id: roku:ABC123
+```json
+{
+  "trigger": [{
+    "platform": "state",
+    "entity_id": "media_player.living_room_roku",
+    "to": "idle",
+    "for": "30 minutes"
+  }],
+  "action": [{
+    "service": "roku_integration.power_off",
+    "data": {
+      "device_id": "roku:X029009JC6LF"
+    }
+  }]
+}
+```
 
-condition:
-  delay: 30 minutes
+**Launch Netflix when Roku turns on:**
 
-action:
-  type: power_off
-  device_id: roku:ABC123
+```json
+{
+  "trigger": [{
+    "platform": "state",
+    "entity_id": "media_player.bedroom_roku",
+    "to": "on"
+  }],
+  "action": [{
+    "service": "roku_integration.launch_app",
+    "data": {
+      "device_id": "roku:ABC123456",
+      "app_id": "12"
+    }
+  }]
+}
 ```
 
 ## Roku Device Settings
