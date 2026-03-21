@@ -82,6 +82,14 @@ cd /Users/matt/waiveo/waiveo
 ./scripts/cli/deploy-cli.sh extension roku-integration
 ```
 
+## Known Gotchas
+
+1. **Entity state values are normalized, not raw Roku values.** The `interpretPowerState()` function maps Roku's raw power modes to normalized states: `"poweron"` → `"on"`, `"standby"` → `"off"`, etc. When creating automation triggers that respond to Roku power changes, use the normalized values (`"on"`, `"off"`, `"playing"`, `"idle"`), NOT raw Roku values like `"PowerOn"` or `"Ready"`.
+
+2. **Poll adapter onStateChange callback is unused.** The `onStateChange` callback registered with `registerDevicePollAdapter()` is never actually invoked. State changes flow through `DevicePollingManager` → `api.setState()` → `StateManager` → `state_changed` event on globalEventBus. The "onStateChange is NULL" warning in device-discovery logs is cosmetic noise — it doesn't affect functionality.
+
+3. **Automation triggers must use platform "state".** When other extensions (like slidecast) create automations that trigger on Roku state changes, they must use `platform: "state"` with `entity_id: "media_player.<slug>"` and `to: "on"`. Custom platforms like `roku-integration.power_changed` are NOT matched by the automation engine's TriggerManager.
+
 ## Cross-Project Escalation
 
 If you encounter a problem outside this project's boundary:
