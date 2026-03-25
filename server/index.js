@@ -564,11 +564,13 @@ function interpretPowerState(rawPowerMode, activeApp) {
     return 'on';
   }
   
-  // For PowerOn state, the display is actually on
+  // For PowerOn state, the display is actually on.
+  // Do NOT reclassify as standby based on screensaver — the device is powered on
+  // and the main-state logic (on/idle/playing) handles screensaver separately.
+  // Returning 'standby' here caused the entity state to stay 'off' when a TV
+  // powered on with the screensaver active, preventing automation triggers
+  // (e.g., auto-launch) from ever matching the 'off' → 'on' transition.
   if (mode === 'poweron' || mode === 'power on') {
-    if (activeApp?.type === 'screensaver') {
-      return 'standby';
-    }
     return 'on';
   }
   
