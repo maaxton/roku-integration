@@ -71,7 +71,7 @@ export class RokuClient {
       
       // Mobile control capabilities - if device responds to ECP, mobile controls are enabled
       // (If "Control by mobile apps" is disabled on device, it won't respond to ECP at all)
-      supportsEcp: info['supports-ecp'] === 'true' || true, // If we got here, ECP works
+      supportsEcp: info['supports-ecp'] === 'true',
       supportsWakeOnWlan: info['supports-wake-on-wlan'] === 'true',
       supportsSuspend: info['supports-suspend'] === 'true',
       supportsAirplay: info['supports-airplay'] === 'true',

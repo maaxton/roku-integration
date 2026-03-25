@@ -662,16 +662,13 @@ async function handleDiscoveredCandidate(candidate) {
 
     // Verify it's a Roku device - check multiple indicators since third-party TV manufacturers
     // (like onn, TCL, Hisense) may not report "Roku" as the vendor name
-    const isRoku = 
+    const isRoku =
       // Has serial number (all Rokus have this)
       info.serialNumber ||
       // Model URL contains roku.com
       info.modelUrl?.toLowerCase().includes('roku.com') ||
       // Model description mentions Roku
-      info.modelDescription?.toLowerCase().includes('roku') ||
-      // Successfully responded to Roku ECP - this is the strongest indicator
-      // If we got device info back at all, it's a Roku
-      true;  // If we get valid device info from port 8060 ECP, it's a Roku
+      info.modelDescription?.toLowerCase().includes('roku');
     
     if (!isRoku) {
       api.log(`Device at ${ip} does not appear to be a Roku`, 'debug');
@@ -1102,7 +1099,7 @@ function registerRoutes() {
   api.registerRoute('GET', '/devices/mobile-access/all', async () => {
     try {
       const devices = await api.model('device_registry').getAll();
-      const rokuDevices = devices.filter(d => d.type === 'roku');
+      const rokuDevices = devices.filter(d => d.device_type === 'roku');
       
       const accessMap = {};
       for (const device of rokuDevices) {
