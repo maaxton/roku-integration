@@ -93,7 +93,7 @@ cd /Users/matt/waiveo/waiveo
 ## Cross-Project Escalation
 
 If you encounter a problem outside this project's boundary:
-1. Write an issue file to `../issues/` following the workspace issue template (see workspace `CLAUDE.md` for format)
+1. Write an issue file to `../issues/` following the workspace issue template (see `docs/orchestrator/cross-project-issues.md` for format)
 2. Set `source-project` to `roku-integration`
 3. Set `assigned-project` if you know who owns it, otherwise `unassigned`
 4. Include specific acceptance criteria so the fixing agent can verify without a round-trip
