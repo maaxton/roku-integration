@@ -152,7 +152,7 @@ async function syncDevicesToRegistry() {
           }
         }
       } catch (e) {
-        // Query failed, proceed with registration
+        api.log(`syncDevicesToRegistry: error checking registry for ${device.name}: ${e.message}`, 'warn');
       }
       
       // If device exists with different IP, log the change
@@ -898,9 +898,9 @@ async function findDevice(deviceId) {
       }
     }
   } catch (err) {
-    // Silently fail - device just won't be found
+    api.log(`findDevice: error querying device_registry for ${deviceId}: ${err.message}`, 'warn');
   }
-  
+
   return null;
 }
 
