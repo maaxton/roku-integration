@@ -89,17 +89,3 @@ cd /Users/matt/waiveo/waiveo
 2. **Poll adapter onStateChange callback is unused.** The `onStateChange` callback registered with `registerDevicePollAdapter()` is never actually invoked. State changes flow through `DevicePollingManager` → `api.setState()` → `StateManager` → `state_changed` event on globalEventBus. The "onStateChange is NULL" warning in device-discovery logs is cosmetic noise — it doesn't affect functionality.
 
 3. **Automation triggers must use platform "state".** When other extensions (like slidecast) create automations that trigger on Roku state changes, they must use `platform: "state"` with `entity_id: "media_player.<slug>"` and `to: "on"`. Custom platforms like `roku-integration.power_changed` are NOT matched by the automation engine's TriggerManager.
-
-## Cross-Project Escalation
-
-If you encounter a problem outside this project's boundary:
-1. Write an issue file to `../issues/` following the workspace issue template (see `docs/orchestrator/cross-project-issues.md` for format)
-2. Set `source-project` to `roku-integration`
-3. Set `assigned-project` if you know who owns it, otherwise `unassigned`
-4. Include specific acceptance criteria so the fixing agent can verify without a round-trip
-5. Always set severity — if `critical`, tell the user: "I've filed a critical cross-project issue — you may want to dispatch this from the workspace level."
-6. Note the dependency in your current work and continue
-
-## Check Assigned Issues
-
-Before starting work, scan `../issues/` for files where `assigned-project` is `roku-integration` and `status` is `assigned` or `in-progress`. Mention any open issues to the user before proceeding with other work.
