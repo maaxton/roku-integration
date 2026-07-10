@@ -1113,11 +1113,20 @@
       <!-- Tab Content -->
       <div class="remote-tab-content">
         {#if activeTab === 'remote'}
+          {@const remotePowerState = selectedDevice ? getDevicePowerState(selectedDevice) : 'unknown'}
           <div class="remote-layout">
-            <!-- Active App -->
+            <!-- Active App (only when device is on) -->
             <div class="active-app-section">
-              <span class="section-label">Now Playing:</span>
-              <span class="active-app-name">{activeApp?.name || 'Home'}</span>
+              {#if remotePowerState === 'on'}
+                <span class="section-label">Now Playing:</span>
+                <span class="active-app-name">{activeApp?.name || 'Home'}</span>
+              {:else if remotePowerState === 'standby' || remotePowerState === 'off'}
+                <span class="section-label">Status:</span>
+                <span class="active-app-name standby">Standby</span>
+              {:else}
+                <span class="section-label">Status:</span>
+                <span class="active-app-name">{remotePowerState}</span>
+              {/if}
             </div>
 
             <!-- Power Controls -->
@@ -1271,8 +1280,8 @@
                 {#each filteredApps as app (app.id)}
                   <div class="app-tile-full">
                     <button class="app-icon-btn" on:click={() => launchApp(app.id)} title="Launch {app.name}">
-                      <img 
-                        src={`http://${selectedDevice.ip_address}:8060/query/icon/${app.id}`} 
+                      <img
+                        src={`${INTEGRATION_API}/devices/${selectedDevice.id || selectedDevice.device_id}/icon/${app.id}`}
                         alt={app.name}
                         on:error={(e) => e.target.style.display = 'none'}
                       />
@@ -2083,6 +2092,11 @@
 
   .active-app-name {
     font-weight: 600;
+  }
+
+  .active-app-name.standby {
+    color: rgb(var(--color-text-secondary));
+    font-style: italic;
   }
 
   .power-section {

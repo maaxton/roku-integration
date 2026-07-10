@@ -1,0 +1,19 @@
+{
+  "name": "roku-integration",
+  "displayName": "Roku Integration",
+  "description": "Discover and control Roku devices — power, app launch, playback.",
+  "category": "Devices",
+  "recommended": true,
+  "hidden": false,
+  "uninstallable": true,
+  "provides": [
+    "roku-control"
+  ],
+  "requires": [
+    "device-discovery"
+  ],
+  "requiresImageDeps": [],
+  "minCoreVersion": "0.0.0",
+  "author": "Waiveo",
+  "license": "MIT"
+}

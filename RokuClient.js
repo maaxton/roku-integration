@@ -4,11 +4,12 @@
  */
 
 import { parseStringPromise } from 'xml2js';
+import { ROKU_ECP_PORT } from './constants.js';
 
-/**
- * Standard Roku ECP port - devices are identified by responding to ECP queries, not MAC addresses
- */
-export const ROKU_ECP_PORT = 8060;
+// Re-exported for any consumer that still imports ROKU_ECP_PORT from here
+// directly. index.js now gets it from constants.js at module scope instead
+// (this module is loaded lazily — see index.js's getRokuClient()).
+export { ROKU_ECP_PORT };
 
 export class RokuClient {
   constructor(ip, port = ROKU_ECP_PORT) {
@@ -47,7 +48,14 @@ export class RokuClient {
       vendorName: info['vendor-name'],
       modelName: info['model-name'],
       modelNumber: info['model-number'],
-      friendlyDeviceName: info['friendly-device-name'] || info['user-device-name'],
+      // #1673: prefer the OWNER-set name (user-device-name) over the marketing
+      // friendly-device-name and the factory default-device-name. This is what
+      // the pending discovery card titles itself with — e.g. "The Hanger".
+      friendlyDeviceName:
+        info['user-device-name'] || info['friendly-device-name'] || info['default-device-name'],
+      userDeviceName: info['user-device-name'] || null,
+      defaultDeviceName: info['default-device-name'] || null,
+      friendlyModelName: info['friendly-model-name'],
       softwareVersion: info['software-version'],
       softwareBuild: info['software-build'],
       uiSoftwareVersion: info['ui-software-version'],
@@ -56,19 +64,19 @@ export class RokuClient {
       wifiMac: info['wifi-mac'],
       ethernetMac: info['ethernet-mac'],
       networkName: info['network-name'],
-      country: info['country'],
-      language: info['language'],
-      locale: info['locale'],
+      country: info.country,
+      language: info.language,
+      locale: info.locale,
       timeZone: info['time-zone'],
       timeZoneName: info['time-zone-name'],
       screenSize: info['screen-size'],
       uiResolution: info['ui-resolution'],
-      uptime: info['uptime'] ? parseInt(info['uptime'], 10) : null,
+      uptime: info.uptime ? parseInt(info.uptime, 10) : null,
       supportsPrivateListening: info['supports-private-listening'] === 'true',
       headphonesConnected: info['headphones-connected'] === 'true',
       isStick: info['is-stick'] === 'true',
       isTv: info['is-tv'] === 'true',
-      
+
       // Mobile control capabilities - if device responds to ECP, mobile controls are enabled
       // (If "Control by mobile apps" is disabled on device, it won't respond to ECP at all)
       supportsEcp: info['supports-ecp'] === 'true',
@@ -81,17 +89,22 @@ export class RokuClient {
       voiceSearchEnabled: info['voice-search-enabled'] === 'true',
       notificationsEnabled: info['notifications-enabled'] === 'true',
       notificationsFirstUse: info['notifications-first-use'] === 'true',
-      
+
       // ECP version info
       ecpVersion: info['ecp-version'] || null,
-      
+
       // kebab-case format for frontend compatibility
       'serial-number': info['serial-number'],
       'device-id': info['device-id'],
       'vendor-name': info['vendor-name'],
       'model-name': info['model-name'],
       'model-number': info['model-number'],
-      'friendly-device-name': info['friendly-device-name'] || info['user-device-name'],
+      // #1673: same owner-first precedence in the kebab-case mirror.
+      'friendly-device-name':
+        info['user-device-name'] || info['friendly-device-name'] || info['default-device-name'],
+      'user-device-name': info['user-device-name'] || null,
+      'default-device-name': info['default-device-name'] || null,
+      'friendly-model-name': info['friendly-model-name'],
       'software-version': info['software-version'],
       'software-build': info['software-build'],
       'ui-software-version': info['ui-software-version'],
@@ -105,7 +118,7 @@ export class RokuClient {
       'screen-size': info['screen-size'],
       'ui-resolution': info['ui-resolution'],
       'is-tv': info['is-tv'],
-      'is-stick': info['is-stick']
+      'is-stick': info['is-stick'],
     };
   }
 
@@ -116,16 +129,23 @@ export class RokuClient {
     const xml = await this._get('/query/apps');
     const parsed = await parseStringPromise(xml, { explicitArray: false });
     const appsData = parsed.apps?.app;
-    
+
     if (!appsData) return [];
     const apps = Array.isArray(appsData) ? appsData : [appsData];
 
-    return apps.map(app => ({
-      id: app.$.id,
-      name: app._,
-      type: app.$.type || 'app',
-      version: app.$.version || null
-    }));
+    // DD6: xml2js only attaches `$` (attributes) when the element actually
+    // has attributes; a malformed/truncated ECP response could hand back a
+    // bare string entry instead of an object. Guard every access instead of
+    // assuming shape.
+    return apps.map((app) => {
+      const attrs = app?.$ || {};
+      return {
+        id: attrs.id ?? null,
+        name: app?._ ?? null,
+        type: attrs.type || 'app',
+        version: attrs.version || null,
+      };
+    });
   }
 
   /**
@@ -139,12 +159,21 @@ export class RokuClient {
     if (!app) {
       const screensaver = parsed['active-app']?.screensaver;
       if (screensaver) {
-        return { id: screensaver.$.id, name: screensaver._, type: 'screensaver' };
+        const attrs = screensaver.$ || {};
+        return { id: attrs.id ?? null, name: screensaver._ ?? null, type: 'screensaver' };
       }
       return null;
     }
 
-    return { id: app.$.id, name: app._, type: 'app' };
+    // Preserve the real type from the ECP response ('home' for the Roku Home
+    // screen, 'appl' for a channel, etc.) instead of flattening everything to
+    // 'app'. The Home screen reports <app id="562859" type="home">Roku Dynamic
+    // Menu</app>; without the real type, callers can't tell Home from a channel
+    // (its NAME varies by firmware — "Home", "Roku", "Roku Dynamic Menu"…).
+    // DD6: guard `$` — a malformed response could hand back an app node with
+    // no attributes at all.
+    const attrs = app.$ || {};
+    return { id: attrs.id ?? null, name: app._ ?? null, type: attrs.type || 'app' };
   }
 
   /**
@@ -154,20 +183,37 @@ export class RokuClient {
     try {
       const xml = await this._get('/query/media-player');
       const parsed = await parseStringPromise(xml, { explicitArray: false });
-      const player = parsed.player;
+      const { player } = parsed;
 
       if (!player) return null;
 
+      // DD6: guard `$` the same way as getApps/getActiveApp.
+      const attrs = player.$ || {};
       return {
-        error: player.$.error === 'true',
-        state: player.$.state,
-        position: player.position ? parseInt(player.position._) : null,
-        duration: player.duration ? parseInt(player.duration._) : null,
-        isLive: player['is_live'] === 'true'
+        error: attrs.error === 'true',
+        state: attrs.state,
+        position: player.position ? parseInt(player.position._, 10) : null,
+        duration: player.duration ? parseInt(player.duration._, 10) : null,
+        isLive: player.is_live === 'true',
       };
     } catch {
       return null;
     }
+  }
+
+  /**
+   * GET /query/device-info, but only regex-extract <power-mode> instead of
+   * parsing the full XML tree into the ~40-field object getDeviceInfo()
+   * builds. Poll (P1, audit 2026-07-04) calls this every ~750ms per device —
+   * across 7 live Rokus that's ~9 full xml2js parses/s replaced with a single
+   * cheap regex match. Static fields (serial/model/firmware/etc.) never
+   * change poll-to-poll; they're captured once via getDeviceInfo() at
+   * discovery/probe time and persisted to device_registry.
+   */
+  async getPowerMode() {
+    const xml = await this._get('/query/device-info');
+    const match = xml.match(/<power-mode>([^<]*)<\/power-mode>/i);
+    return match ? match[1] : null;
   }
 
   /**
@@ -186,10 +232,22 @@ export class RokuClient {
 
   /**
    * POST /keypress/{key} - Send a keypress
+   *
+   * DD7: `key` used to be forwarded verbatim into the ECP URL path — the
+   * automation command UI restricts it to a fixed <select> allowlist, but the
+   * REST route (POST /devices/:id/keypress/:key) and the sendKeypress()
+   * service both hand this whatever the caller supplied. Validate against
+   * Roku's actual key-name grammar (word characters only — covers every
+   * named ECP key plus `Lit_<char>` input) and encode before building the
+   * URL, as a single choke point for every caller.
    */
   async keypress(key) {
-    await this._post(`/keypress/${key}`);
-    return { success: true, key };
+    const safeKey = String(key ?? '');
+    if (!/^[A-Za-z0-9_]{1,32}$/.test(safeKey)) {
+      throw new Error(`Invalid keypress key: ${JSON.stringify(key)}`);
+    }
+    await this._post(`/keypress/${encodeURIComponent(safeKey)}`);
+    return { success: true, key: safeKey };
   }
 
   /**
@@ -199,7 +257,7 @@ export class RokuClient {
     const params = new URLSearchParams({
       keyword,
       type: options.type || 'tv-show',
-      'launch': options.launch ? 'true' : 'false'
+      launch: options.launch ? 'true' : 'false',
     });
     await this._post(`/search/browse?${params.toString()}`);
     return { success: true, keyword };
@@ -306,7 +364,7 @@ export class RokuClient {
     try {
       // First check if device responds at all
       await this.getDeviceInfo();
-      
+
       // Try to get apps list - this fails with 403 when mobile control is disabled
       // DO NOT send any keypresses - that would affect the TV!
       try {
@@ -315,13 +373,17 @@ export class RokuClient {
         return { level: 'full', canControl: true, canQueryApps: true };
       } catch (appsErr) {
         if (appsErr.message.includes('403')) {
-          return { level: 'limited', canControl: false, canQueryApps: false, reason: 'Mobile control restricted - enable "Permissive" mode in Roku settings' };
+          return {
+            level: 'limited', canControl: false, canQueryApps: false, reason: 'Mobile control restricted - enable "Permissive" mode in Roku settings',
+          };
         }
         // Other error, but device-info worked
         return { level: 'limited', canControl: false, canQueryApps: false };
       }
     } catch (err) {
-      return { level: 'disabled', canControl: false, canQueryApps: false, reason: 'Device not responding to ECP' };
+      return {
+        level: 'disabled', canControl: false, canQueryApps: false, reason: 'Device not responding to ECP',
+      };
     }
   }
 
@@ -336,7 +398,7 @@ export class RokuClient {
       const response = await fetch(`${this.baseUrl}${path}`, {
         method: 'GET',
         signal: controller.signal,
-        headers: { 'User-Agent': 'Waiveo-Roku/1.0' }
+        headers: { 'User-Agent': 'Waiveo-Roku/1.0' },
       });
       clearTimeout(timeoutId);
 
@@ -364,9 +426,9 @@ export class RokuClient {
         signal: controller.signal,
         headers: {
           'User-Agent': 'Waiveo-Roku/1.0',
-          'Content-Length': body.length.toString()
+          'Content-Length': body.length.toString(),
         },
-        body
+        body,
       });
       clearTimeout(timeoutId);
 
@@ -382,11 +444,10 @@ export class RokuClient {
   }
 
   _delay(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   setTimeout(ms) {
     this.timeout = ms;
   }
 }
-
