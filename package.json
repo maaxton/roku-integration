@@ -5,8 +5,14 @@
   "description": "Roku device discovery and control for Waiveo",
   "author": "Waiveo",
   "license": "MIT",
+  "scripts": {
+    "test": "vitest run"
+  },
   "dependencies": {
     "xml2js": "^0.6.2"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.9"
   },
   "waiveo": {
     "displayName": "Roku Integration",
