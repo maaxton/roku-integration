@@ -213,7 +213,41 @@ const wantsReleaseRefresh = (ctx) => ctx.query
 
 // Fixed-length mask returned by GET /fleet/dev-credentials — presence only, and
 // deliberately a CONSTANT so it never leaks the real password's length.
-const DEV_PW_MASK = '••••••••';
+export const DEV_PW_MASK = '••••••••';
+
+/**
+ * One-time migration off the legacy plaintext `ctx.config` 'dev_credentials'
+ * blob onto per-scope encrypted secrets (`roku_dev_password` fleet default +
+ * `roku_dev_password:<serial>` per device). Runs on every init() but is a
+ * no-op once the blob is cleared. NEVER lose the password: any failure while
+ * writing secrets (e.g. `E_NO_SECRETS_KEY` — the host key isn't available
+ * yet) leaves the plaintext blob in place untouched and just warns; only a
+ * fully successful migration clears it.
+ */
+export async function migrateDevCredentialsToSecrets(ctx) {
+  let blob;
+  try {
+    blob = await ctx.config.get('dev_credentials');
+  } catch (err) {
+    ctx.log(`Fleet: failed to read legacy dev_credentials for migration: ${err.message}`, 'warn');
+    return;
+  }
+  if (!blob || typeof blob !== 'object') return; // nothing to migrate
+  const fleetDefault = (blob.fleet_default != null && blob.fleet_default !== '') ? blob.fleet_default : null;
+  const perDevice = (blob.per_device && typeof blob.per_device === 'object') ? blob.per_device : {};
+  try {
+    if (fleetDefault != null) {
+      await ctx.secrets.set('roku_dev_password', fleetDefault);
+    }
+    await Promise.all(Object.entries(perDevice)
+      .filter(([, password]) => password != null && password !== '')
+      .map(([serial, password]) => ctx.secrets.set(`roku_dev_password:${serial}`, password)));
+    await ctx.config.set('dev_credentials', null);
+    ctx.log('Fleet: migrated dev_credentials to per-scope encrypted secrets', 'info');
+  } catch (err) {
+    ctx.log(`Fleet: dev_credentials migration to secrets failed (${err.message}); leaving the legacy plaintext blob in place`, 'warn');
+  }
+}
 
 // Send a handler result object as JSON on a [stream] route. Long-running write
 // routes (player install/reset, fleet update-all) are marked [stream] so the
@@ -274,37 +308,23 @@ async function readScreenLinks(ctx) {
   }
 }
 
-/** Read the dev-credentials blob, normalized to {fleet_default, per_device}. */
-async function readDevCredentials(ctx) {
-  try {
-    const blob = await ctx.config.get('dev_credentials');
-    if (blob && typeof blob === 'object') {
-      return {
-        fleet_default: blob.fleet_default != null ? blob.fleet_default : null,
-        per_device: (blob.per_device && typeof blob.per_device === 'object') ? blob.per_device : {},
-      };
-    }
-  } catch (err) {
-    ctx.log(`Fleet: failed to read dev_credentials: ${err.message}`, 'warn');
+/**
+ * Resolve the dev password for a serial from the central encrypted secrets
+ * store: per-device secret (`roku_dev_password:<serial>`) wins over the fleet
+ * default (`roku_dev_password`). Never a JSON blob in ctx.config.
+ */
+export async function resolveDevPassword(ctx, serial) {
+  if (serial != null) {
+    const perDevice = await ctx.secrets.get(`roku_dev_password:${serial}`);
+    if (perDevice) return perDevice;
   }
-  return { fleet_default: null, per_device: {} };
+  return (await ctx.secrets.get('roku_dev_password')) || null;
 }
 
-/** Resolve the dev password for a serial: per_device[serial] ?? fleet_default. */
-function resolveDevPassword(blob, serial) {
-  if (!blob) return null;
-  const per = blob.per_device || {};
-  if (serial != null && per[serial] != null && per[serial] !== '') return per[serial];
-  return (blob.fleet_default != null && blob.fleet_default !== '') ? blob.fleet_default : null;
-}
-
-/** Build a RokuDevClient whose password is resolved from config at op time. */
+/** Build a RokuDevClient whose password is resolved from secrets at op time. */
 function makeDevClient(ctx, device) {
   return new RokuDevClient(device.ip_address, {
-    passwordResolver: async () => {
-      const blob = await readDevCredentials(ctx);
-      return resolveDevPassword(blob, device.serial_number);
-    },
+    passwordResolver: async () => resolveDevPassword(ctx, device.serial_number),
   });
 }
 
@@ -1237,16 +1257,16 @@ export default {
     // ============================================
 
     // GET /fleet/dev-credentials — presence + fixed-length mask ONLY, never the
-    // plaintext secret and never its real length. Reads the 'dev_credentials'
-    // blob (a SEPARATE ctx.config key from 'settings' so PUT /settings never
-    // touches it).
+    // plaintext secret and never its real length. Presence is computed per-scope
+    // straight from the encrypted secrets store (`roku_dev_password` fleet
+    // default + `roku_dev_password:<serial>` per device) — never a config blob.
     'GET /fleet/dev-credentials': async (ctx) => {
-      const blob = await readDevCredentials(ctx);
       const rows = await queryRokuDevices(ctx);
-      const per = blob.per_device || {};
-      const devices = rows.map((d) => {
+      const fleetValue = await ctx.secrets.get('roku_dev_password');
+      const fleetSet = fleetValue != null;
+      const devices = await Promise.all(rows.map(async (d) => {
         const serial = d.serial_number || null;
-        const set = serial != null && per[serial] != null && per[serial] !== '';
+        const set = serial != null && (await ctx.secrets.get(`roku_dev_password:${serial}`)) != null;
         return {
           device_id: d.id,
           serial,
@@ -1254,8 +1274,7 @@ export default {
           set,
           masked: set ? DEV_PW_MASK : null,
         };
-      });
-      const fleetSet = blob.fleet_default != null && blob.fleet_default !== '';
+      }));
       return {
         success: true,
         user: 'rokudev',
@@ -1265,8 +1284,9 @@ export default {
     },
 
     // PUT /fleet/dev-credentials — body { scope:'fleet'|'device', device_id?,
-    // password|null }. Merges into the 'dev_credentials' blob; password:null|''
-    // clears. Never echoes the secret back.
+    // password|null }. Writes/clears the per-scope encrypted secret directly
+    // (`roku_dev_password` fleet default, `roku_dev_password:<serial>` per
+    // device); password:null|'' deletes the secret. Never echoes it back.
     'PUT /fleet/dev-credentials': async (ctx) => {
       const body = ctx.body && typeof ctx.body === 'object' ? ctx.body : {};
       const { scope } = body;
@@ -1280,14 +1300,11 @@ export default {
       if (password != null && typeof password !== 'string') {
         return { success: false, error: 'password must be a string or null', status: 400 };
       }
-      const blob = await readDevCredentials(ctx);
-      const next = {
-        fleet_default: blob.fleet_default != null ? blob.fleet_default : null,
-        per_device: { ...(blob.per_device || {}) },
-      };
+      const clearing = password == null || password === '';
       let targetSerial = null;
+      let key;
       if (scope === 'fleet') {
-        next.fleet_default = (password == null || password === '') ? null : password;
+        key = 'roku_dev_password';
       } else {
         if (!body.device_id) {
           return { success: false, error: 'device_id required for device scope', status: 400 };
@@ -1298,19 +1315,19 @@ export default {
         if (!targetSerial) {
           return { success: false, error: 'Device has no serial number; cannot set a per-device password', status: 400 };
         }
-        if (password == null || password === '') delete next.per_device[targetSerial];
-        else next.per_device[targetSerial] = password;
+        key = `roku_dev_password:${targetSerial}`;
       }
       try {
-        await ctx.config.set('dev_credentials', next);
+        if (clearing) await ctx.secrets.delete(key);
+        else await ctx.secrets.set(key, password);
       } catch (err) {
-        ctx.log(`Fleet: failed to persist dev_credentials: ${err.message}`, 'error');
+        ctx.log(`Fleet: failed to persist dev credential '${key}': ${err.message}`, 'error');
         return { success: false, error: 'Failed to save dev credentials', status: 500 };
       }
-      const fleetSet = next.fleet_default != null && next.fleet_default !== '';
-      const deviceSet = targetSerial != null
-        && next.per_device[targetSerial] != null
-        && next.per_device[targetSerial] !== '';
+      const fleetSet = scope === 'fleet'
+        ? !clearing
+        : (await ctx.secrets.get('roku_dev_password')) != null;
+      const deviceSet = scope === 'device' ? !clearing : undefined;
       return {
         success: true, scope, fleet: { set: fleetSet }, device: scope === 'device' ? { serial: targetSerial, set: deviceSet } : undefined,
       };
@@ -1340,7 +1357,6 @@ export default {
     // (auth-free, no :80 digest here).
     'GET /fleet/players': async (ctx) => {
       const rows = await queryRokuDevices(ctx);
-      const blob = await readDevCredentials(ctx);
       const tokenRows = await readTokenRows(ctx);
       const screenLinks = await readScreenLinks(ctx);
       let latestMeta = null;
@@ -1349,7 +1365,7 @@ export default {
       } catch (err) {
         ctx.log(`Fleet: release lookup failed (players still returned): ${err.message}`, 'warn');
       }
-      const players = await Promise.all(rows.map((d) => {
+      const players = await Promise.all(rows.map(async (d) => {
         const device = {
           device_id: d.id,
           name: d.friendly_name || d.name || 'Unknown Roku',
@@ -1357,7 +1373,7 @@ export default {
           serial_number: d.serial_number || null,
           online: d.online,
         };
-        const hasPassword = resolveDevPassword(blob, device.serial_number) != null;
+        const hasPassword = (await resolveDevPassword(ctx, device.serial_number)) != null;
         return buildPlayerStatus(ctx, device, {
           tokenRows, screenLinks, latestMeta, hasPassword,
         });
@@ -1370,7 +1386,6 @@ export default {
     'GET /devices/:id/player': async (ctx) => {
       const device = await findDevice(ctx, ctx.params.id);
       if (!device) return { success: false, error: 'Device not found', status: 404 };
-      const blob = await readDevCredentials(ctx);
       const tokenRows = await readTokenRows(ctx);
       const screenLinks = await readScreenLinks(ctx);
       let latestMeta = null;
@@ -1379,7 +1394,7 @@ export default {
       } catch (err) {
         ctx.log(`Fleet: release lookup failed (player still returned): ${err.message}`, 'warn');
       }
-      const hasPassword = resolveDevPassword(blob, device.serial_number) != null;
+      const hasPassword = (await resolveDevPassword(ctx, device.serial_number)) != null;
       const player = await buildPlayerStatus(ctx, device, {
         tokenRows, screenLinks, latestMeta, hasPassword,
       });
@@ -1529,6 +1544,20 @@ export default {
 
   // === Lifecycle ===
   init: async (ctx) => {
+    // Register the fleet-default dev password as a declared "need" — the
+    // Variables & Secrets page surfaces it as needed until a value exists at
+    // key 'roku_dev_password' (fleet scope). Per-device overrides
+    // ('roku_dev_password:<serial>') are set ad hoc via PUT
+    // /fleet/dev-credentials and are not separately declared needs.
+    await ctx.secrets.require('roku_dev_password', {
+      label: 'Roku dev-connection password (fleet default)',
+      description: 'rokudev digest password used to sideload/control Rokus',
+    });
+
+    // One-time migration off the legacy plaintext ctx.config 'dev_credentials'
+    // blob onto the per-scope encrypted secrets read above.
+    await migrateDevCredentialsToSecrets(ctx);
+
     // Discovery, polling, and command dispatch are handled ENTIRELY by the
     // platform DeviceTypeHost consuming the declarative `devices:` block above
     // (docs/architecture/device-automation-standard.md). This extension no

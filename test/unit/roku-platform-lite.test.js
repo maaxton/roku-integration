@@ -89,6 +89,14 @@ function makeInProcessCtx({
       broadcast: (event, data) => calls.broadcast.push({ event, data }),
       log: (message, level) => calls.log.push({ message, level }),
       config: { get: async () => null },
+      // ctx.secrets sugar (mirrors ContextFactory.js's in-process shape,
+      // added alongside the Roku dev-password → encrypted-secrets migration).
+      secrets: {
+        require: async () => ({}),
+        get: async () => null,
+        set: async () => {},
+        delete: async () => {},
+      },
       ...(platform !== undefined ? { platform } : {}),
     },
     calls,
@@ -238,6 +246,21 @@ describe('roku against an isolated-ctx stand-in — never crashes on ctx.platfor
       config: {
         get: async (key) => (Object.prototype.hasOwnProperty.call(configValues, key) ? configValues[key] : null),
       },
+      // ctx.secrets: assumed wired as a real isolated `built` member (same
+      // treatment as `entities`/`devices` in Wave 3 Task 1) backing the
+      // roku_dev_password migration below. NOTE: as of this change,
+      // backend/src/sdk/isolation/host-runtime.mjs's makeCtx() does NOT yet
+      // build a `secrets` member — only ContextFactory.js (in-process) does
+      // (Variables & Secrets plan Task 4). Until host-runtime.mjs is updated
+      // to match, a REAL isolated roku-integration host would throw
+      // E_NOT_SUPPORTED_ISOLATED on this init() step. Tracked as a follow-up;
+      // this stand-in models the intended contract, not the current gap.
+      secrets: {
+        require: async () => ({}),
+        get: async () => null,
+        set: async () => {},
+        delete: async () => {},
+      },
       log: () => {},
     };
     return makeIsolatedCtx(built);
@@ -286,9 +309,19 @@ describe('roku against an isolated-ctx stand-in — never crashes on ctx.platfor
     // No `ctx.data` needed: init() no longer touches `ctx.data` at all (the legacy
     // `DROP TABLE roku_devices` raw-SQL call was removed outright in fork-host Wave 3
     // Task 4 — dead cleanup for a table deleted in the device-stack consolidation).
+    // `config`/`secrets` ARE needed now: init() registers the roku_dev_password
+    // need and runs the one-time dev_credentials → secrets migration (see the
+    // `secrets` comment on `wireIsolatedCtx` above for the isolated-wiring caveat).
     const ctx = makeIsolatedCtx({
       params: {},
       log: (message, level) => logs.push({ message, level }),
+      config: { get: async () => null, set: async () => {} },
+      secrets: {
+        require: async () => ({}),
+        get: async () => null,
+        set: async () => {},
+        delete: async () => {},
+      },
     });
     await expect(roku.init(ctx)).resolves.toBeUndefined();
     expect(logs.some((l) => l.message.includes('Inspector panel unavailable in isolated mode'))).toBe(true);
